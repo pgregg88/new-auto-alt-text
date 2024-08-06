@@ -1,5 +1,9 @@
 <?php
-// Add a settings page to manage logging
+if (!defined('ABSPATH')) {
+    exit; // Exit if accessed directly
+}
+
+// Add a settings page to manage logging and API token
 function naat_register_settings_page() {
     add_options_page(
         'New Auto Alt Text Settings',
@@ -13,44 +17,6 @@ add_action('admin_menu', 'naat_register_settings_page');
 
 // Render the settings page
 function naat_render_settings_page() {
-    // Get current settings
-    $logging_enabled = get_option('naat_logging_enabled');
-    $openai_api_token = get_option('naat_openai_api_token');
-    $authorized_post_types = get_option('naat_authorized_post_types');
-    $single_post_id = get_option('naat_single_post');
-    $multi_post = get_option('naat_multi_post');
-
-    // Get log file content
-    $upload_dir = wp_upload_dir();
-    $log_file = $upload_dir['basedir'] . '/naat_log.txt';
-    $log_content = file_exists($log_file) ? file_get_contents($log_file) : 'Log file is empty or does not exist.';
-
-    // Fetch the selected single post information
-    $single_post = null;
-    $single_post_meta_info = [];
-    if ($single_post_id) {
-        $single_post = get_post($single_post_id);
-        if ($single_post && $single_post->post_type !== 'attachment') {
-            $attachments = get_attached_media('image', $single_post_id);
-            foreach ($attachments as $attachment) {
-                $meta_keys = get_post_custom_keys($attachment->ID);
-                $meta_info = [];
-                foreach ($meta_keys as $key) {
-                    // Filter out unwanted meta keys
-                    if (in_array($key, ['image_optimizer_metadata', '_wp_attachment_metadata', 'siteground_optimizer_optimization_attempts', 'siteground_optimizer_optimization_failed'])) {
-                        continue;
-                    }
-                    $meta_value = get_post_meta($attachment->ID, $key, true);
-                    $meta_info[$key] = empty($meta_value) ? 'n/a' : $meta_value;
-                }
-                $single_post_meta_info[] = [
-                    'attachment_id' => $attachment->ID,
-                    'meta_info' => $meta_info,
-                ];
-            }
-        }
-    }
-
     ?>
     <div class="wrap" style="display: flex;">
         <div style="flex: 0 1 60%; max-width: 60%; padding-right: 20px;">
@@ -62,33 +28,82 @@ function naat_render_settings_page() {
                 submit_button('Save Config');
                 ?>
             </form>
+            <form method="post" action="">
+                <input type="hidden" name="naat_add_alt_text" value="1">
+                <?php submit_button('Add Alt Text'); ?>
+            </form>
             <h2>Log File</h2>
+            <?php
+            $upload_dir = wp_upload_dir();
+            $log_file = $upload_dir['basedir'] . '/naat_log.txt';
+            $log_content = file_exists($log_file) ? file_get_contents($log_file) : 'Log file is empty or does not exist.';
+            ?>
             <textarea readonly rows="20" cols="100" style="width: 100%;"><?php echo esc_textarea($log_content); ?></textarea>
             <form method="post" action="">
                 <button type="submit" name="refresh_log" class="button">Refresh Log</button>
+                <button type="submit" name="download_log" class="button">Download Log</button>
+                <button type="submit" name="erase_log" class="button">Erase Log</button>
             </form>
         </div>
         <div style="flex: 0 1 40%; max-width: 40%;">
-            <?php if ($single_post) : ?>
-                <h2>Selected Post Information</h2>
-                <p><strong>Post Type:</strong> <?php echo esc_html($single_post->post_type); ?></p>
-                <p><strong>Post Title:</strong> <?php echo esc_html($single_post->post_title); ?></p>
-                <p><strong>Post ID:</strong> <?php echo esc_html($single_post->ID); ?></p>
-                <h3>Image Meta Information</h3>
-                <ul>
-                    <?php foreach ($single_post_meta_info as $info) : ?>
-                        <li>
-                            <strong>Image ID:</strong> <?php echo esc_html($info['attachment_id']); ?>
-                            <ul>
-                                <?php foreach ($info['meta_info'] as $key => $value) : ?>
-                                    <li><?php echo esc_html($key); ?>: <?php echo esc_html($value); ?></li>
-                                <?php endforeach; ?>
-                            </ul>
-                        </li>
-                    <?php endforeach; ?>
-                </ul>
-            <?php else : ?>
-                <p>No images found or no post selected.</p>
+            <?php
+            $single_post_id = get_option('naat_single_post');
+            if ($single_post_id) :
+                $single_post = get_post($single_post_id);
+                if ($single_post && $single_post->post_type !== 'attachment') :
+                    $post_edit_link = get_edit_post_link($single_post->ID);
+                    $post_type_edit_link = ($single_post->post_type === 'consulting-services') ?
+                        '/wp-admin/admin.php?page=jet-engine-cpt&cpt_action=edit&id=16' :
+                        '/wp-admin/admin.php?page=jet-engine-cpt&cpt_action=edit&id=17';
+                    ?>
+                    <h2>Selected Post Information</h2>
+                    <p><strong>Post Type:</strong> <a href="<?php echo esc_url($post_type_edit_link); ?>" target="_blank"><?php echo esc_html($single_post->post_type); ?></a></p>
+                    <p><strong>Post Title:</strong> <a href="<?php echo esc_url($post_edit_link); ?>" target="_blank"><?php echo esc_html($single_post->post_title); ?></a></p>
+                    <p><strong>Post ID:</strong> <a href="<?php echo esc_url($post_edit_link); ?>" target="_blank"><?php echo esc_html($single_post->ID); ?></a></p>
+                    <h3>Image Meta Information</h3>
+                    <ul>
+                        <?php
+                        $meta_keys_to_check = [];
+                        $alt_text_keys = [];
+
+                        if ($single_post->post_type === 'capabilities') {
+                            $meta_keys_to_check = ['hero_image', 'tile_image', '_thumbnail_id'];
+                            $alt_text_keys = ['hero_image_alt_txt', 'tile_image_alt_txt'];
+                        } elseif ($single_post->post_type === 'consulting-services') {
+                            $meta_keys_to_check = ['hero_image', 'tile_image', 'uc_graphic_0', 'uc_graphic_1', 'uc_graphic_2', '_thumbnail_id'];
+                            $alt_text_keys = ['hero_image_alt_txt', 'tile_image_alt_txt', 'uc_graphic_alt_txt_0', 'uc_graphic_alt_txt_1', 'uc_graphic_alt_txt_2'];
+                        }
+
+                        foreach ($meta_keys_to_check as $meta_key) {
+                            $image_id = get_post_meta($single_post->ID, $meta_key, true);
+                            if ($image_id) {
+                                $alt_text_key = array_shift($alt_text_keys);
+                                $alt_text = get_post_meta($single_post->ID, $alt_text_key, true);
+
+                                // Get image thumbnail
+                                $thumbnail = wp_get_attachment_image_src($image_id, 'thumbnail');
+                                $thumbnail_url = $thumbnail ? $thumbnail[0] : '';
+
+                                ?>
+                                <li>
+                                    <strong>Image ID (<?php echo esc_html($meta_key); ?>):</strong> <?php echo esc_html($image_id); ?>
+                                    <?php if ($thumbnail_url) : ?>
+                                        <br><img src="<?php echo esc_url($thumbnail_url); ?>" width="100" height="100" alt="<?php echo esc_attr($alt_text); ?>">
+                                    <?php endif; ?>
+                                    <p><strong>Image Alt Txt (<?php echo esc_html($alt_text_key); ?>):</strong> <?php echo is_array($alt_text) ? 'n/a' : esc_html($alt_text); ?></p>
+                                </li>
+                                <?php
+                            } else {
+                                ?>
+                                <li><strong><?php echo esc_html($meta_key); ?>:</strong> n/a</li>
+                                <?php
+                            }
+                        }
+                        ?>
+                    </ul>
+                <?php else : ?>
+                    <p>No images found or no post selected.</p>
+                <?php endif; ?>
             <?php endif; ?>
         </div>
     </div>
@@ -102,6 +117,7 @@ function naat_register_settings() {
     register_setting('naat_settings_group', 'naat_authorized_post_types');
     register_setting('naat_settings_group', 'naat_single_post');
     register_setting('naat_settings_group', 'naat_multi_post');
+    register_setting('naat_settings_group', 'naat_replace_alt_text'); // Add this line
 
     add_settings_section('naat_settings_section', '', null, 'new-auto-alt-text');
 
@@ -110,6 +126,7 @@ function naat_register_settings() {
     add_settings_field('naat_authorized_post_types', 'Authorized Post Types', 'naat_render_authorized_post_types', 'new-auto-alt-text', 'naat_settings_section');
     add_settings_field('naat_single_post', 'Single Post Selector', 'naat_render_single_post', 'new-auto-alt-text', 'naat_settings_section');
     add_settings_field('naat_multi_post', 'Multi Post Selector', 'naat_render_multi_post', 'new-auto-alt-text', 'naat_settings_section');
+    add_settings_field('naat_replace_alt_text', 'Replace Alt Text', 'naat_render_replace_alt_text', 'new-auto-alt-text', 'naat_settings_section'); // Add this line
 }
 add_action('admin_init', 'naat_register_settings');
 
@@ -142,7 +159,7 @@ function naat_render_authorized_post_types() {
 function naat_render_single_post() {
     $single_post = get_option('naat_single_post');
     $authorized_post_types = get_option('naat_authorized_post_types');
-    $post_types = array_merge(explode(',', $authorized_post_types), ['attachments']); // Ensure attachments is included
+    $post_types = explode(',', $authorized_post_types);
 
     // Get all posts for the given post types
     $posts = get_posts([
@@ -172,37 +189,54 @@ function naat_render_multi_post() {
     <?php
 }
 
-// Refresh log content upon button click
+// Render the replace alt text field
+function naat_render_replace_alt_text() {
+    $replace_alt_text = get_option('naat_replace_alt_text');
+    ?>
+    <input type="checkbox" name="naat_replace_alt_text" value="1" <?php checked($replace_alt_text, '1'); ?> />
+    <p class="description">Enable this to replace existing alt text with newly generated alt text.</p>
+    <?php
+}
+
+// Handle log file actions
 if (isset($_POST['refresh_log'])) {
     $upload_dir = wp_upload_dir();
     $log_file = $upload_dir['basedir'] . '/naat_log.txt';
     $log_content = file_exists($log_file) ? file_get_contents($log_file) : 'Log file is empty or does not exist.';
-    add_action('admin_notices', function() use ($log_content) {
-        ?>
-        <div class="notice notice-success is-dismissible">
-            <p>Log file refreshed.</p>
-            <textarea readonly rows="20" cols="100" style="width: 100%;"><?php echo esc_textarea($log_content); ?></textarea>
-        </div>
-        <?php
-    });
-}
-
-// Log the settings update
-function naat_log_settings_update() {
+    ?>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const logFileTextArea = document.querySelector('textarea');
+            logFileTextArea.value = <?php echo json_encode($log_content); ?>;
+        });
+    </script>
+    <?php
+} elseif (isset($_POST['download_log'])) {
     $upload_dir = wp_upload_dir();
     $log_file = $upload_dir['basedir'] . '/naat_log.txt';
-    $time = current_time('Y-m-d H:i:s');
-    $version = '1.0'; // Update this to your plugin version
-    $log_entry = "{$time} - Plugin updated to version {$version}. Settings saved:\n";
-    $log_entry .= "Logging Enabled: " . get_option('naat_logging_enabled') . "\n";
-    $log_entry .= "OpenAI API Token: " . get_option('naat_openai_api_token') . "\n";
-    $log_entry .= "Authorized Post Types: " . get_option('naat_authorized_post_types') . "\n";
-    $log_entry .= "Single Post: " . get_option('naat_single_post') . "\n";
-    $log_entry .= "Multi Post: " . get_option('naat_multi_post') . "\n";
-    file_put_contents($log_file, $log_entry, FILE_APPEND);
+    if (file_exists($log_file)) {
+        header('Content-Description: File Transfer');
+        header('Content-Type: application/octet-stream');
+        header('Content-Disposition: attachment; filename=' . basename($log_file));
+        header('Expires: 0');
+        header('Cache-Control: must-revalidate');
+        header('Pragma: public');
+        header('Content-Length: ' . filesize($log_file));
+        readfile($log_file);
+        exit;
+    }
+} elseif (isset($_POST['erase_log'])) {
+    $upload_dir = wp_upload_dir();
+    $log_file = $upload_dir['basedir'] . '/naat_log.txt';
+    if (file_exists($log_file)) {
+        file_put_contents($log_file, '');
+    }
+    ?>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const logFileTextArea = document.querySelector('textarea');
+            logFileTextArea.value = 'Log file erased.';
+        });
+    </script>
+    <?php
 }
-add_action('update_option_naat_logging_enabled', 'naat_log_settings_update');
-add_action('update_option_naat_openai_api_token', 'naat_log_settings_update');
-add_action('update_option_naat_authorized_post_types', 'naat_log_settings_update');
-add_action('update_option_naat_single_post', 'naat_log_settings_update');
-add_action('update_option_naat_multi_post', 'naat_log_settings_update');
