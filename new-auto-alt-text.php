@@ -15,6 +15,18 @@ function naat_activate() {
     if (get_option('naat_logging_enabled') === false) {
         add_option('naat_logging_enabled', '1');
     }
+    if (get_option('naat_openai_api_token') === false) {
+        add_option('naat_openai_api_token', '');
+    }
+    if (get_option('naat_authorized_post_types') === false) {
+        add_option('naat_authorized_post_types', 'consulting-services,capabilities');
+    }
+    if (get_option('naat_single_post') === false) {
+        add_option('naat_single_post', '');
+    }
+    if (get_option('naat_multi_post') === false) {
+        add_option('naat_multi_post', '');
+    }
 
     // Create a log file upon activation
     $upload_dir = wp_upload_dir();
@@ -28,10 +40,3 @@ register_activation_hook(__FILE__, 'naat_activate');
 // Include necessary files
 include_once plugin_dir_path(__FILE__) . 'includes/log-functions.php';
 include_once plugin_dir_path(__FILE__) . 'includes/admin-settings.php';
-
-// Test function to log a message
-function naat_test_logging() {
-    naat_log('This is a test log entry.');
-    echo '<div class="notice notice-success is-dismissible"><p>Test log entry added.</p></div>';
-}
-add_action('admin_notices', 'naat_test_logging');
