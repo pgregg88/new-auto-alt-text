@@ -203,14 +203,19 @@ if (isset($_POST['refresh_log'])) {
     $upload_dir = wp_upload_dir();
     $log_file = $upload_dir['basedir'] . '/naat_log.txt';
     $log_content = file_exists($log_file) ? file_get_contents($log_file) : 'Log file is empty or does not exist.';
-    ?>
+    
+    // Store the content in a variable instead of outputting immediately
+    $script = "
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const logFileTextArea = document.querySelector('textarea');
-            logFileTextArea.value = <?php echo json_encode($log_content); ?>;
+            logFileTextArea.value = " . json_encode($log_content) . ";
         });
-    </script>
-    <?php
+    </script>";
+    add_action('admin_footer', function() use ($script) {
+        echo $script;
+    });
+    
 } elseif (isset($_POST['download_log'])) {
     $upload_dir = wp_upload_dir();
     $log_file = $upload_dir['basedir'] . '/naat_log.txt';
@@ -231,12 +236,17 @@ if (isset($_POST['refresh_log'])) {
     if (file_exists($log_file)) {
         file_put_contents($log_file, '');
     }
-    ?>
+    
+    // Store the content in a variable instead of outputting immediately
+    $script = "
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const logFileTextArea = document.querySelector('textarea');
             logFileTextArea.value = 'Log file erased.';
         });
-    </script>
-    <?php
+    </script>";
+    add_action('admin_footer', function() use ($script) {
+        echo $script;
+    });
 }
+
