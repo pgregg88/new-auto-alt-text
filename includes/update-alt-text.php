@@ -4,7 +4,6 @@ if (!defined('ABSPATH')) {
 }
 
 function naat_process_alt_text() {
-    // Use get_plugin_data() to retrieve plugin header data
     include_once( ABSPATH . 'wp-admin/includes/plugin.php' ); 
     $plugin_data = get_plugin_data(WP_PLUGIN_DIR . '/new-auto-alt-text/new-auto-alt-text.php');
     $version = $plugin_data['Version'];
@@ -19,7 +18,6 @@ function naat_process_alt_text() {
     $post_types = explode(',', $authorized_post_types);
     $posts = [];
 
-    // Add a log entry indicating the start of a new job
     file_put_contents($log_file, "Starting new job: New Auto Alt Text Plugin v{$version}\n", FILE_APPEND);
 
     if ($multi_post) {
@@ -38,6 +36,9 @@ function naat_process_alt_text() {
             ]);
         }
     } elseif ($single_post_id) {
+        if (is_array($single_post_id)) {
+            $single_post_id = reset($single_post_id); // Use the first element if it's an array
+        }
         $posts = [get_post($single_post_id)];
     } else {
         $posts = get_posts([
@@ -63,44 +64,48 @@ function naat_process_alt_text() {
 
         foreach ($meta_keys_to_check as $meta_key) {
             $image_id = get_post_meta($post->ID, $meta_key, true);
+            if (is_array($image_id)) {
+                $image_id = reset($image_id); // Use the first element if it's an array
+            }
+
             if ($image_id) {
                 $alt_text_key = array_shift($alt_text_keys);
-
-                // Debugging: Log the retrieved alt_text_key
-                file_put_contents($log_file, "Debug: Retrieved alt_text_key: " . gettype($alt_text_key) . " - " . print_r($alt_text_key, true) . "\n", FILE_APPEND);
-
                 $alt_text = get_post_meta($post->ID, $alt_text_key, true);
-
-                // Debugging: Log the type and value of the retrieved alt text
-                file_put_contents($log_file, "Debug: Retrieved alt text for post ID {$post->ID}, meta key {$alt_text_key}: " . gettype($alt_text) . " - " . print_r($alt_text, true) . "\n", FILE_APPEND);
-
-                // Convert array alt text to string if necessary
+                
                 if (is_array($alt_text)) {
-                    $alt_text = implode(', ', $alt_text);
-                }
-
-                // Check for invalid 'Array' alt text
-                if ($alt_text === 'Array' || strpos($alt_text, 'Array,') !== false) {
-                    $alt_text = '';
+                    $alt_text = implode(', ', $alt_text); // Convert the array to a string
                 }
 
                 if (empty($alt_text) || $replace_alt_text) {
                     $focus_keyword = get_post_meta($post->ID, '_yoast_wpseo_focuskw', true);
-                    $prompt = $focus_keyword ? "Generate a unique, SEO-friendly alt text for an image related to '{$focus_keyword}'. Ensure the description is varied and specific to the image." : "Generate a unique, SEO-friendly alt text for an image related to '{$post->post_title}'. Ensure the description is varied and specific to the image.";
+                    if (is_array($focus_keyword)) {
+                        $focus_keyword = implode(', ', $focus_keyword); // Convert the array to a string if necessary
+                    }
+
+                    $prompt = $focus_keyword ? "Generate a unique, SEO-friendly alt text for an image related to '{$focus_keyword}'." : "Generate a unique, SEO-friendly alt text for an image related to '{$post->post_title}'.";
                     $generated_alt_text = naat_generate_alt_text($openai_api_token, $prompt, $log_file);
 
                     if ($generated_alt_text && $generated_alt_text !== 'Error generating alt text') {
-                        // Remove any unnecessary quotes around the alt text
                         if (is_array($generated_alt_text)) {
-                            $generated_alt_text = implode(', ', $generated_alt_text);
+                            $generated_alt_text = implode(', ', $generated_alt_text); // Convert the array to a string
                         }
                         $generated_alt_text = trim($generated_alt_text, '"');
+
+                        // Update the post meta with the generated alt text
                         update_post_meta($post->ID, $alt_text_key, $generated_alt_text);
+
+                        // Log the updated alt text
                         $log_entries[] = "Updated alt text for image ID {$image_id} ({$meta_key}) to '{$generated_alt_text}'";
                     } else {
+                        // Log the failure to generate alt text
                         $log_entries[] = "Failed to generate alt text for image ID {$image_id} ({$meta_key})";
                     }
                 } else {
+                    // Ensure $alt_text is a string before logging
+                    if (is_array($alt_text)) {
+                        $alt_text = implode(', ', $alt_text);
+                    }
+                    // Log the skipped image
                     $log_entries[] = "Skipped image ID {$image_id} ({$meta_key}) as it already has alt text '{$alt_text}'";
                 }
             } else {
@@ -113,6 +118,8 @@ function naat_process_alt_text() {
         file_put_contents($log_file, $log_entry, FILE_APPEND);
     }
 }
+
+
 
 function naat_generate_alt_text($api_token, $prompt, $log_file) {
     $url = 'https://api.openai.com/v1/chat/completions';

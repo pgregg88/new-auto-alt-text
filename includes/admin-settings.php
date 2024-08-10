@@ -48,6 +48,10 @@ function naat_render_settings_page() {
         <div style="flex: 0 1 40%; max-width: 40%;">
             <?php
             $single_post_id = get_option('naat_single_post');
+            if (is_array($single_post_id)) {
+                $single_post_id = reset($single_post_id); // Use the first element if it's an array
+            }
+
             if ($single_post_id) :
                 $single_post = get_post($single_post_id);
                 if ($single_post && $single_post->post_type !== 'attachment') :
@@ -76,9 +80,17 @@ function naat_render_settings_page() {
 
                         foreach ($meta_keys_to_check as $meta_key) {
                             $image_id = get_post_meta($single_post->ID, $meta_key, true);
+                            if (is_array($image_id)) {
+                                $image_id = reset($image_id); // Use the first element if it's an array
+                            }
+
                             if ($image_id) {
                                 $alt_text_key = array_shift($alt_text_keys);
                                 $alt_text = get_post_meta($single_post->ID, $alt_text_key, true);
+                                
+                                if (is_array($alt_text)) {
+                                    $alt_text = implode(', ', $alt_text); // Convert the array to a string
+                                }
 
                                 // Get image thumbnail
                                 $thumbnail = wp_get_attachment_image_src($image_id, 'thumbnail');
@@ -90,7 +102,7 @@ function naat_render_settings_page() {
                                     <?php if ($thumbnail_url) : ?>
                                         <br><img src="<?php echo esc_url($thumbnail_url); ?>" width="100" height="100" alt="<?php echo esc_attr($alt_text); ?>">
                                     <?php endif; ?>
-                                    <p><strong>Image Alt Txt (<?php echo esc_html($alt_text_key); ?>):</strong> <?php echo is_array($alt_text) ? 'n/a' : esc_html($alt_text); ?></p>
+                                    <p><strong>Image Alt Txt (<?php echo esc_html($alt_text_key); ?>):</strong> <?php echo esc_html($alt_text); ?></p>
                                 </li>
                                 <?php
                             } else {
@@ -117,7 +129,7 @@ function naat_register_settings() {
     register_setting('naat_settings_group', 'naat_authorized_post_types');
     register_setting('naat_settings_group', 'naat_single_post');
     register_setting('naat_settings_group', 'naat_multi_post');
-    register_setting('naat_settings_group', 'naat_replace_alt_text'); // Add this line
+    register_setting('naat_settings_group', 'naat_replace_alt_text');
 
     add_settings_section('naat_settings_section', '', null, 'new-auto-alt-text');
 
@@ -126,7 +138,7 @@ function naat_register_settings() {
     add_settings_field('naat_authorized_post_types', 'Authorized Post Types', 'naat_render_authorized_post_types', 'new-auto-alt-text', 'naat_settings_section');
     add_settings_field('naat_single_post', 'Single Post Selector', 'naat_render_single_post', 'new-auto-alt-text', 'naat_settings_section');
     add_settings_field('naat_multi_post', 'Multi Post Selector', 'naat_render_multi_post', 'new-auto-alt-text', 'naat_settings_section');
-    add_settings_field('naat_replace_alt_text', 'Replace Alt Text', 'naat_render_replace_alt_text', 'new-auto-alt-text', 'naat_settings_section'); // Add this line
+    add_settings_field('naat_replace_alt_text', 'Replace Alt Text', 'naat_render_replace_alt_text', 'new-auto-alt-text', 'naat_settings_section');
 }
 add_action('admin_init', 'naat_register_settings');
 
@@ -249,4 +261,3 @@ if (isset($_POST['refresh_log'])) {
         echo $script;
     });
 }
-
