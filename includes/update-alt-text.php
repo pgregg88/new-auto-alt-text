@@ -65,7 +65,14 @@ function naat_process_alt_text() {
             $image_id = get_post_meta($post->ID, $meta_key, true);
             if ($image_id) {
                 $alt_text_key = array_shift($alt_text_keys);
+
+                // Debugging: Log the retrieved alt_text_key
+                file_put_contents($log_file, "Debug: Retrieved alt_text_key: " . gettype($alt_text_key) . " - " . print_r($alt_text_key, true) . "\n", FILE_APPEND);
+
                 $alt_text = get_post_meta($post->ID, $alt_text_key, true);
+
+                // Debugging: Log the type and value of the retrieved alt text
+                file_put_contents($log_file, "Debug: Retrieved alt text for post ID {$post->ID}, meta key {$alt_text_key}: " . gettype($alt_text) . " - " . print_r($alt_text, true) . "\n", FILE_APPEND);
 
                 // Convert array alt text to string if necessary
                 if (is_array($alt_text)) {
@@ -84,6 +91,9 @@ function naat_process_alt_text() {
 
                     if ($generated_alt_text && $generated_alt_text !== 'Error generating alt text') {
                         // Remove any unnecessary quotes around the alt text
+                        if (is_array($generated_alt_text)) {
+                            $generated_alt_text = implode(', ', $generated_alt_text);
+                        }
                         $generated_alt_text = trim($generated_alt_text, '"');
                         update_post_meta($post->ID, $alt_text_key, $generated_alt_text);
                         $log_entries[] = "Updated alt text for image ID {$image_id} ({$meta_key}) to '{$generated_alt_text}'";
